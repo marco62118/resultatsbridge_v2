@@ -13,7 +13,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.resultatsbridge.common.model.Equipe
-import app.resultatsbridge.v2.BuildConfig
+import app.resultatsbridge.BuildConfig
 import java.text.SimpleDateFormat
 import java.util.*
 

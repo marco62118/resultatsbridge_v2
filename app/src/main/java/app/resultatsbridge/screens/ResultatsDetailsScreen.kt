@@ -2,7 +2,7 @@
 package app.resultatsbridge.screens
 
 import android.app.Activity
-import app.resultatsbridge.v2.BuildConfig
+import app.resultatsbridge.BuildConfig
 import android.content.Context
 import android.content.pm.ActivityInfo
 import android.widget.Toast
