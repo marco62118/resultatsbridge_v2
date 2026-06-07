@@ -1,0 +1,45 @@
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Dossiers de build des modules
+app/build/
+
+# Logs Kotlin compiler
+.kotlin/
+
+# Paramètres locaux Claude Code
+.claude/
+
+# APK / AAB générés
+*.apk
+*.aab
+*.ap_
+
+# Fichiers volumineux hors code source (racine du projet)
+*.jpg
+*.png
+*.ico
+*.svg
+*.xlsx
+*.docx
+*.db
+*.sql
+Thumbs.db
+
+# Modèles ML (binaires lourds — distribués séparément)
+*.onnx
+*.pt
+*.tflite

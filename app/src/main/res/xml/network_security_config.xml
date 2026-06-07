@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+
+    <!--
+        Serveur distant alwaysdata (HTTPS — Let's Encrypt).
+        Android 7+ reconnaît Let's Encrypt nativement via le store système.
+        Android 6 ne reconnaît pas ISRG Root X1 (ajouté seulement en Android 7.1.1) :
+        on l'inclut donc directement dans l'application pour combler ce manque.
+    -->
+    <domain-config>
+        <domain includeSubdomains="true">resultats-bridge.alwaysdata.net</domain>
+        <trust-anchors>
+            <certificates src="system"/>
+            <certificates src="@raw/isrg_root_x1"/>
+        </trust-anchors>
+    </domain-config>
+
+    <!--
+        Serveur local embarqué (NanoHTTPD port 8080 — HTTP simple, pas de SSL).
+        Le HTTP en clair est autorisé uniquement pour les plages d'IP privées
+        utilisées sur un réseau local (LAN du tournoi).
+    -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">127.0.0.1</domain>
+        <domain includeSubdomains="true">10.0.0.0</domain>
+        <domain includeSubdomains="true">172.16.0.0</domain>
+        <domain includeSubdomains="true">192.168.0.0</domain>
+    </domain-config>
+
+    <!-- Par défaut : HTTP clair interdit, SSL obligatoire -->
+    <base-config cleartextTrafficPermitted="false"/>
+
+</network-security-config>
