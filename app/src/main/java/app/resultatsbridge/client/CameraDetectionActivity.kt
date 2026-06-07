@@ -41,6 +41,7 @@ class CameraDetectionActivity : BaseActivity() {
     private var capturedPhotoFile: File? = null
     private var capturedPhotoUri: Uri? = null
     private var activeWebView: WebView? = null
+    private var cameraLaunchTime = 0L
 
     private val isLoading = mutableStateOf(true)
     private val statusMsg = mutableStateOf("Ouverture caméra...")
@@ -48,6 +49,7 @@ class CameraDetectionActivity : BaseActivity() {
 
     private val cameraLauncher = registerForActivityResult(ActivityResultContracts.TakePicture()) { success ->
         if (success) {
+            supprimerPhotoGalerie()
             val filePath = capturedPhotoFile?.absolutePath
             if (filePath != null) { statusMsg.value = "Analyse en cours…"; startWebAnalysisFromFile(filePath) }
             else { setResult(RESULT_CANCELED); finish() }
@@ -94,10 +96,22 @@ class CameraDetectionActivity : BaseActivity() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
             permissionLauncher.launch(Manifest.permission.CAMERA); return
         }
+        cameraLaunchTime = System.currentTimeMillis()
         val photoFile = File.createTempFile("bridge_", ".jpg", cacheDir)
         capturedPhotoFile = photoFile
         capturedPhotoUri = FileProvider.getUriForFile(this, "${packageName}.fileprovider", photoFile)
         cameraLauncher.launch(capturedPhotoUri!!)
+    }
+
+    private fun supprimerPhotoGalerie() {
+        try {
+            val cutoffSec = (cameraLaunchTime / 1000) - 1
+            contentResolver.delete(
+                android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                "${android.provider.MediaStore.Images.Media.DATE_ADDED} >= ?",
+                arrayOf(cutoffSec.toString())
+            )
+        } catch (_: Exception) {}
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -152,6 +166,7 @@ img.src='file://$filePath';
         fun onPredictions(data: String) {
             runOnUiThread {
                 wv.destroy(); activeWebView = null
+                capturedPhotoFile?.delete(); capturedPhotoFile = null
                 detectedCartes.value = parseRoboflowResults(data)
                 isLoading.value = false
             }
@@ -160,6 +175,7 @@ img.src='file://$filePath';
         fun onError(msg: String) {
             runOnUiThread {
                 wv.destroy(); activeWebView = null
+                capturedPhotoFile?.delete(); capturedPhotoFile = null
                 detectedCartes.value = List(13) { "?" }
                 isLoading.value = false
             }
