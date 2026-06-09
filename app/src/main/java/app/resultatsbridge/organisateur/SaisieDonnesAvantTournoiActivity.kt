@@ -51,7 +51,7 @@ class SaisieDonnesAvantTournoiActivity : BaseActivity() {
                 var numeroDonneSaisie by remember { mutableStateOf("") }
                 var message by remember { mutableStateOf("") }
                 var derniereDonneEnregistree by remember { mutableStateOf<Int?>(null) }
-                var modeleRtDetr by remember { mutableStateOf(false) }
+                var modeleNom by remember { mutableStateOf("RT_DETR") }
                 var modeleExpanded by remember { mutableStateOf(false) }
                 val rotation90 = true
                 var donneInitialeCartes by remember { mutableStateOf<List<List<String>>?>(null) }
@@ -74,7 +74,7 @@ class SaisieDonnesAvantTournoiActivity : BaseActivity() {
                     AffichageMainsBatchScreen(
                         numeroDonne = donneEnCours!!,
                         demarrerDirectement = demarrerBatchDirectement,
-                        initialModeleRtDetr = modeleRtDetr,
+                        initialModele = modeleNom,
                         initialRotation90 = rotation90,
                         initialCartes = donneInitialeCartes,
                         onRetour = { donneEnCours = null; demarrerBatchDirectement = false; donneInitialeCartes = null },
@@ -164,10 +164,11 @@ class SaisieDonnesAvantTournoiActivity : BaseActivity() {
                                     onClick = { modeleExpanded = true },
                                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                                     border = BorderStroke(1.dp, Color.White),
-                                ) { Text(if (modeleRtDetr) "RT-DETR ⚡" else "Roboflow ☁", fontSize = 12.sp, color = Color.Black) }
+                                ) { Text(when (modeleNom) { "YOLO11" -> "YOLOv11s ⚡"; "RT_DETR" -> "RT-DETR ⚡"; else -> "Roboflow ☁" }, fontSize = 12.sp, color = Color.Black) }
                                 DropdownMenu(expanded = modeleExpanded, onDismissRequest = { modeleExpanded = false }) {
-                                    DropdownMenuItem(text = { Text("RT-DETR ⚡ (local)") }, onClick = { modeleRtDetr = true; modeleExpanded = false })
-                                    DropdownMenuItem(text = { Text("Roboflow ☁ (web)") }, onClick = { modeleRtDetr = false; modeleExpanded = false })
+                                    DropdownMenuItem(text = { Text("RT-DETR ⚡ (local)") }, onClick = { modeleNom = "RT_DETR"; modeleExpanded = false })
+                                    DropdownMenuItem(text = { Text("YOLOv11s ⚡ (local)") }, onClick = { modeleNom = "YOLO11"; modeleExpanded = false })
+                                    DropdownMenuItem(text = { Text("Roboflow ☁ (web)") }, onClick = { modeleNom = "ROBOFLOW"; modeleExpanded = false })
                                 }
                             }
                         }

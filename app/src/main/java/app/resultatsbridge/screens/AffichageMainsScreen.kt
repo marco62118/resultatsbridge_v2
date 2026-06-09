@@ -1,6 +1,7 @@
 package app.resultatsbridge.screens
 
 import android.Manifest
+import app.resultatsbridge.BuildConfig
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -293,7 +294,7 @@ private suspend fun analyserRoboflow(bmp: Bitmap): Pair<List<String>, Map<String
         val b64 = Base64.encodeToString(baos.toByteArray(), Base64.NO_WRAP)
 
         // ← changer ici pour tester un autre modèle Roboflow
-        val url = URL("https://detect.roboflow.com/cartesbridgev4-4lzeb/5?api_key=V53Tf7oqdPXcCtcdp5y3")
+        val url = URL("https://detect.roboflow.com/cartesbridgev4-4lzeb/9?api_key=V53Tf7oqdPXcCtcdp5y3")
         val conn = (url.openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
@@ -667,7 +668,7 @@ private enum class EtapeBatch { CAPTURE, ATTENTE, CORRECTION }
 fun AffichageMainsBatchScreen(
     numeroDonne: Int,
     demarrerDirectement: Boolean = false,
-    initialModeleRtDetr: Boolean = true,
+    initialModele: String = "RT_DETR",
     initialRotation90: Boolean = false,
     initialCartes: List<List<String>>? = null,
     onRetour: () -> Unit,
@@ -678,7 +679,7 @@ fun AffichageMainsBatchScreen(
     val joueurs = listOf("Nord", "Est", "Sud", "Ouest")
 
     var etape          by remember { mutableStateOf(if (initialCartes != null) EtapeBatch.CORRECTION else EtapeBatch.CAPTURE) }
-    var modele         by remember { mutableStateOf(if (initialModeleRtDetr) ModelePhoto.RT_DETR else ModelePhoto.ROBOFLOW) }
+    var modele         by remember { mutableStateOf(when (initialModele) { "YOLO11" -> ModelePhoto.YOLO11; "ROBOFLOW" -> ModelePhoto.ROBOFLOW; else -> ModelePhoto.RT_DETR }) }
     var modeleExpanded by remember { mutableStateOf(false) }
     var rotation90     by remember { mutableStateOf(initialRotation90) }
     var rotation90CW   by remember { mutableStateOf(false) }
@@ -1091,18 +1092,18 @@ fun AffichageMainsBatchScreen(
             }
         ) { innerPadding ->
             Column(Modifier.padding(innerPadding).fillMaxSize().background(Color(0xFF0B6623)).padding(horizontal = 8.dp, vertical = 4.dp)) {
-                Text("[ Saisie photo donne (batch) ]", color = Color(0xFFFFEB3B), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                if (BuildConfig.DEBUG) Text("[ Saisie photo donne (batch) ]", color = Color(0xFFFFEB3B), fontWeight = FontWeight.Bold, fontSize = 11.sp)
 
                 // Ligne 1 : Modèle + chrono + N° donne
                 Row(Modifier.fillMaxWidth().padding(bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("Modèle :", color = Color.White, fontSize = 12.sp, modifier = Modifier.padding(end = 6.dp))
                     Box {
                         OutlinedButton(onClick = { modeleExpanded = true }, colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White), border = BorderStroke(1.dp, Color.White), contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)) {
-                            Text(when (modele) { ModelePhoto.RT_DETR -> "RT-DETR ⚡"; ModelePhoto.YOLO11 -> "YOLOv11 ⚡"; else -> "Roboflow ☁" }, fontSize = 12.sp)
+                            Text(when (modele) { ModelePhoto.RT_DETR -> "RT-DETR ⚡"; ModelePhoto.YOLO11 -> "YOLOv11s ⚡"; else -> "Roboflow ☁" }, fontSize = 12.sp)
                         }
                         DropdownMenu(expanded = modeleExpanded, onDismissRequest = { modeleExpanded = false }) {
                             DropdownMenuItem(text = { Text("RT-DETR ⚡ (local)") }, onClick = { modele = ModelePhoto.RT_DETR; modeleExpanded = false })
-                            DropdownMenuItem(text = { Text("YOLOv11 ⚡ (local)") }, onClick = { modele = ModelePhoto.YOLO11; modeleExpanded = false })
+                            DropdownMenuItem(text = { Text("YOLOv11s ⚡ (local)") }, onClick = { modele = ModelePhoto.YOLO11; modeleExpanded = false })
                             DropdownMenuItem(text = { Text("Roboflow ☁ (web)") }, onClick = { modele = ModelePhoto.ROBOFLOW; modeleExpanded = false })
                         }
                     }
@@ -1557,6 +1558,7 @@ private fun PhotoSaisieContent(
                             } catch (e: Exception) { yolo11Erreur = true; null }
                             if (det == null) List(13) { "?" } to emptyMap() else analyserYolo11(det, bmp)
                         }
+                        else -> List(13) { "?" } to emptyMap()
                     }
                 }
                 cartesCodes[idx].clear()
@@ -1566,7 +1568,19 @@ private fun PhotoSaisieContent(
                 autocalcules = autocalcules - idx  // photo prise → plus auto-calculé
                 if (tempsDebut > 0L) dureeMsAnalyse = System.currentTimeMillis() - tempsDebut
                 isAnalyzing = false
-        
+
+                // Auto-déduction : si exactement 1 "?" restant + 1 carte manquante des 52 → remplir automatiquement
+                val tousPresents = (0..3).flatMap { cartesCodes[it].filter { c -> c != "?" && c.length >= 2 } }.toSet()
+                val restants = JeuDeCartes.toutesLesCartes.map { it.code }.filter { it !in tousPresents }
+                val interros = (0..3).flatMap { i -> cartesCodes[i].indices.mapNotNull { pos -> if (cartesCodes[i][pos] == "?" || cartesCodes[i][pos].length < 2) (i to pos) else null } }
+                if (restants.size == 1 && interros.size == 1) {
+                    val (hIdx, pos) = interros[0]
+                    val l = cartesCodes[hIdx].toMutableList()
+                    l[pos] = restants[0]
+                    cartesCodes[hIdx].clear()
+                    cartesCodes[hIdx].addAll(l)
+                }
+
                 erreursParMain = (0..3).associate { it to calculerErreursMain(it) }
             }
         }
@@ -1781,7 +1795,7 @@ private fun PhotoSaisieContent(
                     .background(Color(0xFF0B6623))
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
-                Text("[ Saisie photo en cours de tournoi ]", color = Color(0xFFFFEB3B), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                if (BuildConfig.DEBUG) Text("[ Saisie photo en cours de tournoi ]", color = Color(0xFFFFEB3B), fontWeight = FontWeight.Bold, fontSize = 11.sp)
                 // ── Ligne 1 : sélecteur modèle + rotation ────────────────────
                 Row(Modifier.fillMaxWidth().padding(bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("Modèle :", color = Color.White, fontSize = 12.sp, modifier = Modifier.padding(end = 6.dp))
@@ -1791,10 +1805,10 @@ private fun PhotoSaisieContent(
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
                             border = BorderStroke(1.dp, Color.White),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                        ) { Text(when (modele) { ModelePhoto.RT_DETR -> "RT-DETR-L ⚡"; ModelePhoto.YOLO11 -> "YOLOv11 ⚡"; else -> "Roboflow ☁" }, fontSize = 12.sp) }
+                        ) { Text(when (modele) { ModelePhoto.RT_DETR -> "RT-DETR-L ⚡"; ModelePhoto.YOLO11 -> "YOLOv11s ⚡"; else -> "Roboflow ☁" }, fontSize = 12.sp) }
                         DropdownMenu(expanded = modeleMenuExpanded, onDismissRequest = { modeleMenuExpanded = false }) {
                             DropdownMenuItem(text = { Text("RT-DETR-L ⚡ (local)") }, onClick = { modele = ModelePhoto.RT_DETR; modeleMenuExpanded = false })
-                            DropdownMenuItem(text = { Text("YOLOv11 ⚡ (local)") }, onClick = { modele = ModelePhoto.YOLO11; modeleMenuExpanded = false })
+                            DropdownMenuItem(text = { Text("YOLOv11s ⚡ (local)") }, onClick = { modele = ModelePhoto.YOLO11; modeleMenuExpanded = false })
                             DropdownMenuItem(text = { Text("Roboflow ☁ (web)") }, onClick = { modele = ModelePhoto.ROBOFLOW; modeleMenuExpanded = false })
                         }
                     }
@@ -2093,7 +2107,7 @@ private fun ManuelSaisieContent(
                     .background(Color(0xFF0B6623))
                     .padding(horizontal = horizontalPaddingDp.dp, vertical = 8.dp)
             ) {
-                Text("[ Saisie manuelle donne ]", color = Color(0xFFFFEB3B), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                if (BuildConfig.DEBUG) Text("[ Saisie manuelle donne ]", color = Color(0xFFFFEB3B), fontWeight = FontWeight.Bold, fontSize = 11.sp)
                 Text("Donne N° $numeroDonne", color = Color.White, fontWeight = FontWeight.ExtraBold,
                     fontSize = 18.sp, modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
                     textAlign = TextAlign.Center)
@@ -2296,7 +2310,7 @@ fun AffichageMainsLectureScreen(numeroDonne: Int, mains: List<List<Carte>>, onRe
             }
         ) { padding ->
             Column(Modifier.padding(padding).fillMaxSize().background(Color(0xFF0B6623)).padding(8.dp)) {
-                Text("[ Visionnage mains enregistrées ]", color = Color(0xFFFFEB3B), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                if (BuildConfig.DEBUG) Text("[ Visionnage mains enregistrées ]", color = Color(0xFFFFEB3B), fontWeight = FontWeight.Bold, fontSize = 11.sp)
                 Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier.clickable { onRetour() }.padding(4.dp)) {

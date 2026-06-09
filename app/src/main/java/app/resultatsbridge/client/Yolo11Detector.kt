@@ -11,8 +11,7 @@ import java.nio.FloatBuffer
 class Yolo11Detector(context: Context) {
 
     companion object {
-        const val MODEL_FILE = "best_yolo11n_v4_512.onnx"
-        private const val INPUT_SIZE = 512
+        const val MODEL_FILE_SMALL   = "bridge_yolo11s_bridge_best.onnx"
         private const val CONFIDENCE_THRESHOLD = 0.25f
 
         // À vérifier avec data.yaml du dataset v2 après entraînement Colab
@@ -33,13 +32,17 @@ class Yolo11Detector(context: Context) {
         )
     }
 
+    private val inputW: Int = 640
+    private val inputH: Int = 384
+    private val modelFileName: String = MODEL_FILE_SMALL
+
     private val env: OrtEnvironment = OrtEnvironment.getEnvironment()
     private val session: OrtSession
 
     init {
-        val modelFile = File(context.filesDir, MODEL_FILE)
+        val modelFile = File(context.filesDir, modelFileName)
         if (!modelFile.exists()) {
-            context.assets.open(MODEL_FILE).use { input ->
+            context.assets.open(modelFileName).use { input ->
                 modelFile.outputStream().use { output -> input.copyTo(output) }
             }
         }
@@ -60,15 +63,15 @@ class Yolo11Detector(context: Context) {
     }
 
     private fun preprocess(bitmap: Bitmap): OnnxTensor {
-        val resized = Bitmap.createScaledBitmap(bitmap, INPUT_SIZE, INPUT_SIZE, true)
-        val pixels = IntArray(INPUT_SIZE * INPUT_SIZE)
-        resized.getPixels(pixels, 0, INPUT_SIZE, 0, 0, INPUT_SIZE, INPUT_SIZE)
-        val fb = FloatBuffer.allocate(3 * INPUT_SIZE * INPUT_SIZE)
+        val resized = Bitmap.createScaledBitmap(bitmap, inputW, inputH, true)
+        val pixels = IntArray(inputW * inputH)
+        resized.getPixels(pixels, 0, inputW, 0, 0, inputW, inputH)
+        val fb = FloatBuffer.allocate(3 * inputW * inputH)
         for (p in pixels) fb.put(((p shr 16) and 0xFF) / 255.0f)
         for (p in pixels) fb.put(((p shr 8)  and 0xFF) / 255.0f)
         for (p in pixels) fb.put((p           and 0xFF) / 255.0f)
         fb.rewind()
-        return OnnxTensor.createTensor(env, fb, longArrayOf(1, 3, INPUT_SIZE.toLong(), INPUT_SIZE.toLong()))
+        return OnnxTensor.createTensor(env, fb, longArrayOf(1, 3, inputH.toLong(), inputW.toLong()))
     }
 
     // Format YOLOv11 : raw[ligne][ancre]
@@ -91,7 +94,7 @@ class Yolo11Detector(context: Context) {
                 if (score > bestScore) { bestScore = score; bestCls = c }
             }
             if (bestCls == -1 || bestCls !in LABELS.indices) continue
-            val cxNorm = raw[0][j] / INPUT_SIZE
+            val cxNorm = raw[0][j] / inputW
             val cur = best[bestCls]
             if (cur == null || bestScore > cur.score) best[bestCls] = Best(bestScore, cxNorm)
         }
