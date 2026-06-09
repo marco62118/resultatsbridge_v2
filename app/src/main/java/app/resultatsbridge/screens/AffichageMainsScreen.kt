@@ -49,7 +49,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import androidx.core.content.FileProvider
 import androidx.exifinterface.media.ExifInterface
 import app.resultatsbridge.client.RtDetrDetector
 import app.resultatsbridge.client.Yolo11Detector
@@ -918,41 +917,16 @@ fun AffichageMainsBatchScreen(
     // Caméra
     var capturedPhotoFile by remember { mutableStateOf<File?>(null) }
 
-    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
-        cameraOuverte = false
-        if (success) {
-            val f = capturedPhotoFile ?: return@rememberLauncherForActivityResult
-            photoFiles[joueurCourant] = f
-            sauvegarderPhotoDataset(context, f, joueurs[joueurCourant])
-            cameraAnnulee = false
-            if (tempsDebut == 0L) tempsDebut = System.currentTimeMillis()
-            analyseTerminee[joueurCourant] = false
-            lancerAnalyse(joueurCourant)
-            if (!captureManuelle) {
-                if (joueurCourant < 3) { joueurCourant++; triggerAutoCamera++ }
-                else etape = EtapeBatch.ATTENTE
-            } else {
-                captureManuelle = false
-                if (photoFiles.all { it != null } && etape == EtapeBatch.CAPTURE) etape = EtapeBatch.ATTENTE
-            }
-        } else {
-            cameraAnnulee = true
-        }
-    }
     val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
-            val f = File.createTempFile("bridge_batch_", ".jpg", context.cacheDir)
-            capturedPhotoFile = f
+            capturedPhotoFile = File.createTempFile("bridge_batch_", ".jpg", context.cacheDir)
             cameraOuverte = true
-            cameraLauncher.launch(FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", f))
         }
     }
     fun lancerCamera() {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) { permLauncher.launch(Manifest.permission.CAMERA); return }
-        val f = File.createTempFile("bridge_batch_", ".jpg", context.cacheDir)
-        capturedPhotoFile = f
+        capturedPhotoFile = File.createTempFile("bridge_batch_", ".jpg", context.cacheDir)
         cameraOuverte = true
-        cameraLauncher.launch(FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", f))
     }
     fun reprendreCapture() {
         for (i in 0..3) { analyseTerminee[i] = false; cartesCodes[i].clear(); confidences[i].clear(); photoFiles[i] = null }
@@ -981,6 +955,7 @@ fun AffichageMainsBatchScreen(
     val valRow1 = listOf("A","R","D","V","10"); val valRow2 = listOf("9","8","7","6","5","4","3","2")
     val suits   = listOf("P" to "♠", "C" to "♥", "K" to "♦", "T" to "♣")
 
+    Box(Modifier.fillMaxSize()) {
     EcranPleinScaffold {
         Scaffold(
             modifier  = Modifier.fillMaxSize(),
@@ -1303,6 +1278,39 @@ fun AffichageMainsBatchScreen(
             }
         }
     }
+    // Overlay CameraX — s'affiche par-dessus l'interface, aucun bouton OK système
+    if (cameraOuverte) {
+        val f = capturedPhotoFile
+        if (f != null) {
+            key(f.absolutePath) {
+                CameraPreviewScreen(
+                    outputFile  = f,
+                    label       = joueurs[joueurCourant],
+                    onPhotoPrise = {
+                        val file = capturedPhotoFile
+                        cameraOuverte = false
+                        if (file != null) {
+                            photoFiles[joueurCourant] = file
+                            sauvegarderPhotoDataset(context, file, joueurs[joueurCourant])
+                            cameraAnnulee = false
+                            if (tempsDebut == 0L) tempsDebut = System.currentTimeMillis()
+                            analyseTerminee[joueurCourant] = false
+                            lancerAnalyse(joueurCourant)
+                            if (!captureManuelle) {
+                                if (joueurCourant < 3) { joueurCourant++; triggerAutoCamera++ }
+                                else etape = EtapeBatch.ATTENTE
+                            } else {
+                                captureManuelle = false
+                                if (photoFiles.all { it != null } && etape == EtapeBatch.CAPTURE) etape = EtapeBatch.ATTENTE
+                            }
+                        }
+                    },
+                    onAnnulee = { cameraOuverte = false; cameraAnnulee = true }
+                )
+            }
+        }
+    }
+    } // Box
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1376,6 +1384,7 @@ private fun PhotoSaisieContent(
     var alerteAutoCalc          by remember { mutableStateOf<Int?>(null) }
     var tempsDebut              by remember { mutableStateOf(0L) }
     var dureeMsAnalyse          by remember { mutableStateOf(0L) }
+    var cameraOuverte           by remember { mutableStateOf(false) }
 
     val cartesCodes = remember { List(4) { mutableStateListOf<String>() } }
     val confidences = remember { List(4) { mutableStateMapOf<String, Float>() } }
@@ -1529,69 +1538,61 @@ private fun PhotoSaisieContent(
         return null
     }
 
-    // ── Caméra — contrat standard TakePicture (compatible tous OEM) ──────────
+    // ── Caméra — CameraX intégré (aucun bouton OK système) ───────────────────
     var capturedPhotoFile by remember { mutableStateOf<File?>(null) }
 
-    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
-        if (success) {
-            val file = capturedPhotoFile ?: return@rememberLauncherForActivityResult
-            val idx  = joueurActif
-            sauvegarderPhotoDataset(context, file, joueurs[idx])
-            isAnalyzing = true
-            tempsDebut = System.currentTimeMillis()
-            selectedCardIdx = -1; kbValue = ""; kbSuit = ""
-            scope.launch {
-                val (codes, conf) = withContext(Dispatchers.IO) {
-                    var bmp = loadBitmapExif(file) ?: return@withContext List(13) { "?" } to emptyMap<String, Float>()
-                    if (rotation90) bmp = pivoter90CCW(bmp) else if (rotation90CW) bmp = pivoter90CW(bmp)
-                    when (modele) {
-                        ModelePhoto.ROBOFLOW -> analyserRoboflow(bmp)
-                        ModelePhoto.RT_DETR  -> {
-                            val det = rtDetr ?: try {
-                                RtDetrDetector(context).also { rtDetr = it; rtDetrErreur = false }
-                            } catch (e: Exception) { rtDetrErreur = true; null }
-                            if (det == null) List(13) { "?" } to emptyMap() else analyserRtDetr(det, bmp)
-                        }
-                        ModelePhoto.YOLO11   -> {
-                            val det = yolo11 ?: try {
-                                Yolo11Detector(context).also { yolo11 = it; yolo11Erreur = false }
-                            } catch (e: Exception) { yolo11Erreur = true; null }
-                            if (det == null) List(13) { "?" } to emptyMap() else analyserYolo11(det, bmp)
-                        }
-                        else -> List(13) { "?" } to emptyMap()
+    fun traiterPhoto(file: File) {
+        val idx = joueurActif
+        sauvegarderPhotoDataset(context, file, joueurs[idx])
+        isAnalyzing = true
+        tempsDebut = System.currentTimeMillis()
+        selectedCardIdx = -1; kbValue = ""; kbSuit = ""
+        scope.launch {
+            val (codes, conf) = withContext(Dispatchers.IO) {
+                var bmp = loadBitmapExif(file) ?: return@withContext List(13) { "?" } to emptyMap<String, Float>()
+                if (rotation90) bmp = pivoter90CCW(bmp) else if (rotation90CW) bmp = pivoter90CW(bmp)
+                when (modele) {
+                    ModelePhoto.ROBOFLOW -> analyserRoboflow(bmp)
+                    ModelePhoto.RT_DETR  -> {
+                        val det = rtDetr ?: try {
+                            RtDetrDetector(context).also { rtDetr = it; rtDetrErreur = false }
+                        } catch (e: Exception) { rtDetrErreur = true; null }
+                        if (det == null) List(13) { "?" } to emptyMap() else analyserRtDetr(det, bmp)
                     }
+                    ModelePhoto.YOLO11   -> {
+                        val det = yolo11 ?: try {
+                            Yolo11Detector(context).also { yolo11 = it; yolo11Erreur = false }
+                        } catch (e: Exception) { yolo11Erreur = true; null }
+                        if (det == null) List(13) { "?" } to emptyMap() else analyserYolo11(det, bmp)
+                    }
+                    else -> List(13) { "?" } to emptyMap()
                 }
-                cartesCodes[idx].clear()
-                cartesCodes[idx].addAll(codes)
-                confidences[idx].clear()
-                confidences[idx].putAll(conf)
-                autocalcules = autocalcules - idx  // photo prise → plus auto-calculé
-                if (tempsDebut > 0L) dureeMsAnalyse = System.currentTimeMillis() - tempsDebut
-                isAnalyzing = false
-
-                // Auto-déduction : si exactement 1 "?" restant + 1 carte manquante des 52 → remplir automatiquement
-                val tousPresents = (0..3).flatMap { cartesCodes[it].filter { c -> c != "?" && c.length >= 2 } }.toSet()
-                val restants = JeuDeCartes.toutesLesCartes.map { it.code }.filter { it !in tousPresents }
-                val interros = (0..3).flatMap { i -> cartesCodes[i].indices.mapNotNull { pos -> if (cartesCodes[i][pos] == "?" || cartesCodes[i][pos].length < 2) (i to pos) else null } }
-                if (restants.size == 1 && interros.size == 1) {
-                    val (hIdx, pos) = interros[0]
-                    val l = cartesCodes[hIdx].toMutableList()
-                    l[pos] = restants[0]
-                    cartesCodes[hIdx].clear()
-                    cartesCodes[hIdx].addAll(l)
-                }
-
-                erreursParMain = (0..3).associate { it to calculerErreursMain(it) }
             }
+            cartesCodes[idx].clear()
+            cartesCodes[idx].addAll(codes)
+            confidences[idx].clear()
+            confidences[idx].putAll(conf)
+            autocalcules = autocalcules - idx
+            if (tempsDebut > 0L) dureeMsAnalyse = System.currentTimeMillis() - tempsDebut
+            isAnalyzing = false
+            val tousPresents = (0..3).flatMap { cartesCodes[it].filter { c -> c != "?" && c.length >= 2 } }.toSet()
+            val restants = JeuDeCartes.toutesLesCartes.map { it.code }.filter { it !in tousPresents }
+            val interros = (0..3).flatMap { i -> cartesCodes[i].indices.mapNotNull { pos -> if (cartesCodes[i][pos] == "?" || cartesCodes[i][pos].length < 2) (i to pos) else null } }
+            if (restants.size == 1 && interros.size == 1) {
+                val (hIdx, pos) = interros[0]
+                val l = cartesCodes[hIdx].toMutableList()
+                l[pos] = restants[0]
+                cartesCodes[hIdx].clear()
+                cartesCodes[hIdx].addAll(l)
+            }
+            erreursParMain = (0..3).associate { it to calculerErreursMain(it) }
         }
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
-            val f = File.createTempFile("bridge_", ".jpg", context.cacheDir)
-            capturedPhotoFile = f
-            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", f)
-            cameraLauncher.launch(uri)
+            capturedPhotoFile = File.createTempFile("bridge_", ".jpg", context.cacheDir)
+            cameraOuverte = true
         }
     }
 
@@ -1599,10 +1600,8 @@ private fun PhotoSaisieContent(
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
             permissionLauncher.launch(Manifest.permission.CAMERA); return
         }
-        val f = File.createTempFile("bridge_", ".jpg", context.cacheDir)
-        capturedPhotoFile = f
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", f)
-        cameraLauncher.launch(uri)
+        capturedPhotoFile = File.createTempFile("bridge_", ".jpg", context.cacheDir)
+        cameraOuverte = true
     }
 
     val valRow1 = listOf("A","R","D","V","10")
@@ -1673,6 +1672,7 @@ private fun PhotoSaisieContent(
         )
     }
 
+    Box(Modifier.fillMaxSize()) {
     EcranPleinScaffold {
         Scaffold(
             modifier  = Modifier.fillMaxSize(),
@@ -1975,6 +1975,24 @@ private fun PhotoSaisieContent(
             }
         }
     }
+    if (cameraOuverte) {
+        val f = capturedPhotoFile
+        if (f != null) {
+            key(f.absolutePath) {
+                CameraPreviewScreen(
+                    outputFile   = f,
+                    label        = joueurs[joueurActif],
+                    onPhotoPrise = {
+                        val file = capturedPhotoFile
+                        cameraOuverte = false
+                        if (file != null) traiterPhoto(file)
+                    },
+                    onAnnulee = { cameraOuverte = false }
+                )
+            }
+        }
+    }
+    } // Box
 }
 
 // Slot carte photo — style identique à la saisie manuelle (valeur + symbole)

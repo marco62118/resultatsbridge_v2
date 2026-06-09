@@ -95,4 +95,11 @@ dependencies {
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.20.0")
     implementation("androidx.exifinterface:exifinterface:1.3.7")
+
+    // CameraX — caméra intégrée sans bouton OK système
+    val cameraXVersion = "1.4.2"
+    implementation("androidx.camera:camera-core:$cameraXVersion")
+    implementation("androidx.camera:camera-camera2:$cameraXVersion")
+    implementation("androidx.camera:camera-lifecycle:$cameraXVersion")
+    implementation("androidx.camera:camera-view:$cameraXVersion")
 }
